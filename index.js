@@ -7,14 +7,15 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// OPTIONAL: Put a free proxy address here if Discord returns '429 Too Many Requests'
-// Example format: 'http://username:password@ip:port' or 'http://ip:port'
+// Optional: Put a free proxy address here if Discord returns '429 Too Many Requests'
 const PROXY_URL = process.env.DISCORD_PROXY_IP || ''; 
 const agent = PROXY_URL ? createHttpsProxyAgent(PROXY_URL) : null;
 
 // Catch-all route to forward everything to Discord
 app.all('*', async (req, res) => {
-    const discordUrl = `https://discord.com{req.url}`;
+    // FIX: Safely formats the URL so it never smashes text together
+    const cleanUrl = req.url.startsWith('/') ? req.url : `/${req.url}`;
+    const discordUrl = `https://discord.com{cleanUrl}`;
     
     try {
         const response = await axios({
@@ -22,11 +23,11 @@ app.all('*', async (req, res) => {
             url: discordUrl,
             headers: {
                 ...req.headers,
-                host: 'discord.com' // Crucial: rewrite host header for Discord
+                host: 'discord.com' // Rewrite host header for Discord
             },
             data: req.body,
             httpsAgent: agent,
-            proxy: false // Handled manually via httpsAgent
+            proxy: false 
         });
         
         res.status(response.status).json(response.data);
@@ -42,13 +43,13 @@ app.all('*', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Discord proxy running on port ${PORT}`);
     
-    // TRICK: Self-ping loop to stop Render from spinning down
+    // Self-ping loop to stop Render from spinning down
     const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL;
     if (RENDER_EXTERNAL_URL) {
         setInterval(() => {
             axios.get(RENDER_EXTERNAL_URL)
                 .then(() => console.log('Self-ping successful: Staying awake!'))
                 .catch((err) => console.error('Self-ping failed:', err.message));
-        }, 10 * 60 * 1000); // Pings every 10 minutes (Render sleeps at 15m)
+        }, 10 * 60 * 1000); // Pings every 10 minutes
     }
 });
